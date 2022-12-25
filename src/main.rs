@@ -160,53 +160,46 @@ impl State {
 
     pub fn go(&mut self, dir: Direction) -> Result<(), ()> {
         let start_gpos = self.player;
-        let mut gpos = start_gpos;
+        let mut cur_gpos = start_gpos;
         let mut blocks = Vec::new();
-        loop {
-            blocks.push(gpos);
-            gpos = self.sibling(gpos, dir).ok_or(())?;
-            let cell = self[gpos];
-            match cell {
-                Cell::Box | Cell::Board(_) => {}
-                // Push sequence.
+        'try_push: loop {
+            match self[cur_gpos] {
+                // Accumulate the push sequence.
+                Cell::Box | Cell::Board(_) => blocks.push(cur_gpos),
+                // Push.
                 Cell::Empty => {
                     let mut cell = Cell::Empty;
-                    blocks.push(gpos);
+                    blocks.push(cur_gpos);
                     for &gpos in &blocks {
                         cell = mem::replace(&mut self[gpos], cell);
                     }
                     self.player = blocks[1];
                     return Ok(());
                 }
-                Cell::Wall => break,
+                // Back pressure for entering.
+                Cell::Wall => loop {
+                    // Push aganst the wall.
+                    if blocks.len() <= 1 {
+                        return Err(());
+                    }
+
+                    let gpos = blocks.pop().unwrap();
+                    match self[gpos] {
+                        Cell::Empty => unreachable!(),
+                        // Non-enterable.
+                        Cell::Wall | Cell::Box => continue,
+                        // Enter.
+                        // NB. Wall inner siblings are handled in the next outer loop.
+                        Cell::Board(board_id) => {
+                            let pos = self[board_id].inner_sibling_pos(dir);
+                            cur_gpos = GlobalPos { board_id, pos };
+                            continue 'try_push;
+                        }
+                    }
+                },
             }
+            cur_gpos = self.sibling(cur_gpos, dir).ok_or(())?;
         }
-
-        // Push aganst the wall.
-        if blocks.len() == 1 {
-            return Err(());
-        }
-
-        // Back pressure.
-        while let Some(gpos) = blocks.pop() {
-            let cell = self[gpos];
-            match cell {
-                Cell::Empty => unreachable!(),
-                Cell::Wall | Cell::Box => continue,
-                Cell::Board(board_id) => {
-                    let board = &self[board_id];
-                    // board.
-                }
-            }
-        }
-
-        todo!()
-    }
-
-    fn inner_sibling(&self, board_id: BoardId, push_dir: Direction) -> GlobalPos {
-        let board = &self[board_id];
-        let pos = board.inner_sibling_pos(push_dir);
-        GlobalPos { board_id, pos }
     }
 }
 
@@ -249,6 +242,11 @@ fn main() -> Result<()> {
     let term = Term::stderr();
     loop {
         eprintln!("{state}");
+
+        if state.is_finished() {
+            eprintln!("Success");
+            break;
+        }
 
         let action = loop {
             if let Ok(action) = Action::try_from(term.read_key()?) {
