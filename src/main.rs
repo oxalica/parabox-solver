@@ -6,6 +6,9 @@ use console::{Key, Term};
 
 mod fmt;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+struct BoardId(u8);
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 struct State {
     player: GlobalPos,
@@ -69,7 +72,7 @@ impl Board {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct GlobalPos {
-    board_id: u8,
+    board_id: BoardId,
     pos: Vec2,
 }
 
@@ -82,7 +85,7 @@ enum Cell {
     Empty,
     Wall,
     Box,
-    Board(u8),
+    Board(BoardId),
 }
 
 impl Cell {
@@ -99,15 +102,27 @@ enum Direction {
     Up,
 }
 
+impl Index<BoardId> for State {
+    type Output = Board;
+    fn index(&self, idx: BoardId) -> &Self::Output {
+        &self.boards[idx.0 as usize]
+    }
+}
+impl IndexMut<BoardId> for State {
+    fn index_mut(&mut self, idx: BoardId) -> &mut Self::Output {
+        &mut self.boards[idx.0 as usize]
+    }
+}
+
 impl Index<GlobalPos> for State {
     type Output = Cell;
     fn index(&self, gpos: GlobalPos) -> &Self::Output {
-        &self.boards[gpos.board_id as usize][gpos.pos]
+        &self[gpos.board_id][gpos.pos]
     }
 }
 impl IndexMut<GlobalPos> for State {
     fn index_mut(&mut self, gpos: GlobalPos) -> &mut Self::Output {
-        &mut self.boards[gpos.board_id as usize][gpos.pos]
+        &mut self[gpos.board_id][gpos.pos]
     }
 }
 
@@ -120,23 +135,24 @@ impl State {
                 .all(|&gpos| self[gpos].is_box_like())
     }
 
-    pub fn get_board_box_pos(&self, target_board: u8) -> Option<GlobalPos> {
-        self.boards.iter().zip(0..).find_map(|(board, board_id)| {
+    pub fn get_board_box_pos(&self, target_board: BoardId) -> Option<GlobalPos> {
+        self.boards.iter().zip(0..).find_map(|(board, id)| {
             let (pos, _) = board
                 .cells()
                 .find(|(_, cell)| *cell == Cell::Board(target_board))?;
-            Some(GlobalPos { board_id, pos })
+            Some(GlobalPos {
+                board_id: BoardId(id),
+                pos,
+            })
         })
     }
 
     pub fn sibling(&self, gpos: GlobalPos, dir: Direction) -> Option<GlobalPos> {
-        if let Some(pos) = self.boards[gpos.board_id as usize].sibling_pos(gpos.pos, dir) {
+        if let Some(pos) = self[gpos.board_id].sibling_pos(gpos.pos, dir) {
             return Some(GlobalPos { pos, ..gpos });
         };
         let board_box_gpos = self.get_board_box_pos(gpos.board_id)?;
-        if let Some(pos) =
-            self.boards[board_box_gpos.board_id as usize].sibling_pos(board_box_gpos.pos, dir)
-        {
+        if let Some(pos) = self[board_box_gpos.board_id].sibling_pos(board_box_gpos.pos, dir) {
             return Some(GlobalPos { pos, ..gpos });
         }
         todo!();
@@ -178,7 +194,7 @@ impl State {
                 Cell::Empty => unreachable!(),
                 Cell::Wall | Cell::Box => continue,
                 Cell::Board(board_id) => {
-                    let board = &self.boards[board_id as usize];
+                    let board = &self[board_id];
                     // board.
                 }
             }
@@ -187,8 +203,8 @@ impl State {
         todo!()
     }
 
-    fn inner_sibling(&self, board_id: u8, push_dir: Direction) -> GlobalPos {
-        let board = &self.boards[board_id as usize];
+    fn inner_sibling(&self, board_id: BoardId, push_dir: Direction) -> GlobalPos {
+        let board = &self[board_id];
         let pos = board.inner_sibling_pos(push_dir);
         GlobalPos { board_id, pos }
     }

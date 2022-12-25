@@ -3,17 +3,21 @@ use std::str::FromStr;
 
 use anyhow::{bail, ensure, Context, Result};
 
-use crate::{Board, Cell, GlobalPos, State, Vec2};
+use crate::{Board, BoardId, Cell, GlobalPos, State, Vec2};
 
 impl fmt::Display for State {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for (board, board_id) in self.boards.iter().zip(0..) {
-            board_id.fmt(f)?;
+        for (board, id) in self.boards.iter().zip(0..) {
+            id.fmt(f)?;
             for (pos, cell) in board.cells() {
                 if pos.1 == 0 {
                     "\n".fmt(f)?;
                 }
-                if (GlobalPos { board_id, pos }) == self.player {
+                let gpos = GlobalPos {
+                    board_id: BoardId(id),
+                    pos,
+                };
+                if gpos == self.player {
                     "p".fmt(f)?;
                 } else {
                     cell.fmt(f)?;
@@ -31,7 +35,7 @@ impl fmt::Display for Cell {
             Cell::Empty => ".".fmt(f),
             Cell::Wall => "#".fmt(f),
             Cell::Box => "b".fmt(f),
-            Cell::Board(i) => i.fmt(f),
+            Cell::Board(BoardId(id)) => id.fmt(f),
         }
     }
 }
@@ -46,7 +50,7 @@ impl FromStr for State {
         let mut player = None;
         let mut player_target = None;
         let mut box_targets = Vec::new();
-        let mut max_board_id = 0;
+        let mut max_board_id = BoardId(0);
 
         while let Some(id_line) = lines.next() {
             let board_id = id_line.parse::<u8>()?;
@@ -54,6 +58,8 @@ impl FromStr for State {
                 board_id as usize == boards.len(),
                 "Invalid board id: {board_id}"
             );
+            let board_id = BoardId(board_id);
+
             let line = lines.next().context("Missing board content")?;
             let width = line.chars().count();
 
@@ -83,9 +89,9 @@ impl FromStr for State {
                             Cell::Empty
                         }
                         '0'..='9' => {
-                            let id = ch as u8 - b'0';
-                            max_board_id = max_board_id.max(id as usize);
-                            Cell::Board(id)
+                            let board_id = BoardId(ch as u8 - b'0');
+                            max_board_id = max_board_id.max(board_id);
+                            Cell::Board(board_id)
                         }
                         _ => bail!("Invalid cell: {ch:?}",),
                     };
@@ -99,7 +105,8 @@ impl FromStr for State {
             while let Some(line) = lines.next().filter(|line| !line.is_empty()) {
                 ensure!(
                     line.chars().count() == width,
-                    "Width mismatch of board {board_id}, line {height}, expecting width {width}",
+                    "Width mismatch of board {}, line {height}, expecting width {width}",
+                    board_id.0,
                 );
                 parse_line(height, line)?;
                 height += 1;
@@ -113,9 +120,10 @@ impl FromStr for State {
         }
 
         ensure!(
-            max_board_id < boards.len(),
-            "Board id {max_board_id} out of bound {}",
-            boards.len()
+            (max_board_id.0 as usize) < boards.len(),
+            "Board id {} out of bound {}",
+            max_board_id.0,
+            boards.len(),
         );
 
         Ok(State {
