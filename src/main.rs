@@ -1,3 +1,5 @@
+use std::collections::hash_map::Entry;
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::mem;
 use std::ops::{Index, IndexMut};
 
@@ -6,10 +8,10 @@ use console::{Key, Term};
 
 mod fmt;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct BoardId(u8);
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct State {
     player: GlobalPos,
     player_target: GlobalPos,
@@ -17,7 +19,7 @@ struct State {
     boards: Box<[Board]>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 struct Board {
     height: u8,
     width: u8,
@@ -70,16 +72,16 @@ impl Board {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct GlobalPos {
     board_id: BoardId,
     pos: Vec2,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 struct Vec2(u8, u8);
 
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum Cell {
     #[default]
     Empty,
@@ -94,12 +96,16 @@ impl Cell {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 enum Direction {
     Right = 0,
     Down,
     Left,
     Up,
+}
+
+impl Direction {
+    const ALL: [Self; 4] = [Self::Right, Self::Down, Self::Left, Self::Up];
 }
 
 impl Index<BoardId> for State {
@@ -127,7 +133,7 @@ impl IndexMut<GlobalPos> for State {
 }
 
 impl State {
-    pub fn is_finished(&self) -> bool {
+    pub fn is_success(&self) -> bool {
         self.player_target == self.player
             && self
                 .box_targets
@@ -236,6 +242,11 @@ fn main() -> Result<()> {
         .parse::<State>()
         .context("Failed to parse the map")?;
 
+    if std::env::args().nth(2).as_deref() == Some("--solve") {
+        eprintln!("{:?}", solve(init_state));
+        return Ok(());
+    }
+
     let mut state = init_state.clone();
     let mut history = Vec::new();
 
@@ -243,7 +254,7 @@ fn main() -> Result<()> {
     loop {
         eprintln!("{state}");
 
-        if state.is_finished() {
+        if state.is_success() {
             eprintln!("Success");
             break;
         }
@@ -276,4 +287,57 @@ fn main() -> Result<()> {
     }
 
     Ok(())
+}
+
+fn solve(init_state: State) -> Option<Vec<Direction>> {
+    #[derive(Clone)]
+    struct Node {
+        state: State,
+        steps: u32,
+        parent: usize,
+        dir: Direction,
+    }
+
+    let mut visited = HashMap::new();
+    let mut queue = vec![Node {
+        state: init_state,
+        steps: 0,
+        // Unused.
+        parent: 0,
+        // Unused.
+        dir: Direction::Right,
+    }];
+
+    let mut cur = 0;
+    let mut success_dir = None;
+    'bfs: while cur != queue.len() {
+        for dir in Direction::ALL {
+            let mut state = queue[cur].state.clone();
+            if state.go(dir).is_err() {
+                continue;
+            }
+            if state.is_success() {
+                success_dir = Some(dir);
+                break 'bfs;
+            }
+            let Entry::Vacant(ent) = visited.entry(state) else { continue };
+            queue.push(Node {
+                state: ent.key().clone(),
+                steps: queue[cur].steps + 1,
+                parent: cur,
+                dir,
+            });
+            ent.insert(queue.len() - 1);
+        }
+        cur += 1;
+    }
+
+    let success_dir = success_dir?;
+    let mut ret = std::iter::successors(Some(cur), |&i| Some(queue[i].parent))
+        .take_while(|&i| i != 0)
+        .map(|i| queue[i].dir)
+        .collect::<Vec<_>>();
+    ret.reverse();
+    ret.push(success_dir);
+    Some(ret)
 }
