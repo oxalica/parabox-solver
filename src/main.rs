@@ -164,11 +164,17 @@ impl State {
 
     pub fn sibling(&self, gpos: GlobalPos, dir: Direction) -> Option<GlobalPos> {
         if let Some(pos) = self[gpos.board_id].sibling_pos(gpos.pos, dir) {
-            return Some(GlobalPos { pos, ..gpos });
+            return Some(GlobalPos {
+                pos,
+                board_id: gpos.board_id,
+            });
         };
         let board_box_gpos = self.get_board_box_pos(gpos.board_id)?;
         if let Some(pos) = self[board_box_gpos.board_id].sibling_pos(board_box_gpos.pos, dir) {
-            return Some(GlobalPos { pos, ..gpos });
+            return Some(GlobalPos {
+                pos,
+                board_id: board_box_gpos.board_id,
+            });
         }
         todo!();
     }
