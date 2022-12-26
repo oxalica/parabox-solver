@@ -1,12 +1,20 @@
 use std::collections::hash_map::Entry;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::HashMap;
 use std::mem;
 use std::ops::{Index, IndexMut};
 
 use anyhow::{Context, Result};
 use console::{Key, Term};
+use indicatif::{ProgressBar, ProgressStyle};
 
 mod fmt;
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+enum GoError {
+    Stuck,
+    Unmovable,
+    OutOfInfinity,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 struct BoardId(u8);
@@ -162,29 +170,37 @@ impl State {
         })
     }
 
-    pub fn sibling(&self, gpos: GlobalPos, dir: Direction) -> Option<GlobalPos> {
-        if let Some(pos) = self[gpos.board_id].sibling_pos(gpos.pos, dir) {
-            return Some(GlobalPos {
-                pos,
-                board_id: gpos.board_id,
-            });
-        };
-        let board_box_gpos = self.get_board_box_pos(gpos.board_id)?;
-        if let Some(pos) = self[board_box_gpos.board_id].sibling_pos(board_box_gpos.pos, dir) {
-            return Some(GlobalPos {
-                pos,
-                board_id: board_box_gpos.board_id,
-            });
+    pub fn sibling(&self, mut gpos: GlobalPos, dir: Direction) -> Option<GlobalPos> {
+        let mut visited = Vec::new();
+        loop {
+            if let Some(pos) = self[gpos.board_id].sibling_pos(gpos.pos, dir) {
+                return Some(GlobalPos {
+                    pos,
+                    board_id: gpos.board_id,
+                });
+            };
+            gpos = self.get_board_box_pos(gpos.board_id)?;
+            if visited.contains(&gpos) {
+                // TODO: Infinity.
+                return None;
+            }
+            visited.push(gpos);
         }
-        todo!();
     }
 
-    pub fn go(&mut self, dir: Direction) -> Result<(), ()> {
+    pub fn go(&mut self, dir: Direction) -> Result<(), GoError> {
         let start_gpos = self.player;
         let mut cur_gpos = start_gpos;
         let mut cur_dir = dir;
         let mut push_seq = Vec::new();
+        let mut cnt = 0;
         'try_push: loop {
+            cnt += 1;
+            // FIXME
+            if cnt > 1000 {
+                return Err(GoError::Stuck);
+            }
+
             match self[cur_gpos] {
                 // Accumulate the push sequence.
                 Cell::Box | Cell::Board(_) => push_seq.push(cur_gpos),
@@ -202,7 +218,7 @@ impl State {
                 Cell::Wall => loop {
                     // Push aganst the wall.
                     if push_seq.len() <= 1 {
-                        return Err(());
+                        return Err(GoError::Unmovable);
                     }
 
                     let last_gpos = push_seq.pop().unwrap();
@@ -241,7 +257,9 @@ impl State {
                     }
                 },
             }
-            cur_gpos = self.sibling(cur_gpos, cur_dir).ok_or(())?;
+            cur_gpos = self
+                .sibling(cur_gpos, cur_dir)
+                .ok_or(GoError::OutOfInfinity)?;
         }
     }
 
@@ -250,8 +268,9 @@ impl State {
         let pos = board.inner_sibling_pos(push_dir);
         match board[pos] {
             Cell::Wall => InnerSibling::Wall,
-            Cell::Empty | Cell::Box => InnerSibling::NonWall(GlobalPos { board_id, pos }),
-            Cell::Board(_) => todo!("Epsilon"),
+            Cell::Empty | Cell::Box | Cell::Board(_) => {
+                InnerSibling::NonWall(GlobalPos { board_id, pos })
+            }
         }
     }
 }
@@ -296,7 +315,12 @@ fn main() -> Result<()> {
         .context("Failed to parse the map")?;
 
     if std::env::args().nth(2).as_deref() == Some("--solve") {
-        eprintln!("{:?}", solve(init_state));
+        let pb = ProgressBar::new_spinner()
+            .with_style(ProgressStyle::with_template("{spinner} {pos} {per_sec}").unwrap());
+        let ret = solve(init_state, |len| {
+            pb.set_position(len as _);
+        });
+        eprintln!("{:?}", ret);
         return Ok(());
     }
 
@@ -342,7 +366,7 @@ fn main() -> Result<()> {
     Ok(())
 }
 
-fn solve(init_state: State) -> Option<Vec<Direction>> {
+fn solve(init_state: State, mut on_step: impl FnMut(usize)) -> Option<Vec<Direction>> {
     #[derive(Clone)]
     struct Node {
         state: State,
@@ -364,6 +388,7 @@ fn solve(init_state: State) -> Option<Vec<Direction>> {
     let mut cur = 0;
     let mut success_dir = None;
     'bfs: while cur != queue.len() {
+        on_step(queue.len());
         for dir in Direction::ALL {
             let mut state = queue[cur].state.clone();
             if state.go(dir).is_err() {
