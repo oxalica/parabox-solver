@@ -106,6 +106,15 @@ enum Direction {
 
 impl Direction {
     const ALL: [Self; 4] = [Self::Right, Self::Down, Self::Left, Self::Up];
+
+    pub fn reversed(self) -> Self {
+        match self {
+            Direction::Right => Direction::Left,
+            Direction::Down => Direction::Up,
+            Direction::Left => Direction::Right,
+            Direction::Up => Direction::Down,
+        }
+    }
 }
 
 impl Index<BoardId> for State {
@@ -167,46 +176,84 @@ impl State {
     pub fn go(&mut self, dir: Direction) -> Result<(), ()> {
         let start_gpos = self.player;
         let mut cur_gpos = start_gpos;
-        let mut blocks = Vec::new();
+        let mut cur_dir = dir;
+        let mut push_seq = Vec::new();
         'try_push: loop {
             match self[cur_gpos] {
                 // Accumulate the push sequence.
-                Cell::Box | Cell::Board(_) => blocks.push(cur_gpos),
+                Cell::Box | Cell::Board(_) => push_seq.push(cur_gpos),
                 // Push.
                 Cell::Empty => {
                     let mut cell = Cell::Empty;
-                    blocks.push(cur_gpos);
-                    for &gpos in &blocks {
+                    push_seq.push(cur_gpos);
+                    for &gpos in &push_seq {
                         cell = mem::replace(&mut self[gpos], cell);
                     }
-                    self.player = blocks[1];
+                    self.player = push_seq[1];
                     return Ok(());
                 }
                 // Back pressure for entering.
                 Cell::Wall => loop {
                     // Push aganst the wall.
-                    if blocks.len() <= 1 {
+                    if push_seq.len() <= 1 {
                         return Err(());
                     }
 
-                    let gpos = blocks.pop().unwrap();
-                    match self[gpos] {
+                    let last_gpos = push_seq.pop().unwrap();
+                    let is_cur_edible = match self[last_gpos] {
                         Cell::Empty => unreachable!(),
-                        // Non-enterable.
-                        Cell::Wall | Cell::Box => continue,
+                        // Non-enterable and non-edible.
+                        Cell::Wall => false,
+                        // Non-enterable but edible.
+                        Cell::Box => true,
                         // Enter.
-                        // NB. Wall inner siblings are handled in the next outer loop.
-                        Cell::Board(board_id) => {
-                            let pos = self[board_id].inner_sibling_pos(dir);
-                            cur_gpos = GlobalPos { board_id, pos };
-                            continue 'try_push;
+                        Cell::Board(board_id) => match self.inner_sibling(board_id, cur_dir) {
+                            // Enterable (preferred).
+                            InnerSibling::NonWall(gpos) => {
+                                cur_gpos = gpos;
+                                continue 'try_push;
+                            }
+                            // Non-enterable but edible.
+                            InnerSibling::Wall => true,
+                        },
+                    };
+
+                    // If the current box is edible and the previous box is enterable in the
+                    // inversed direction, enqueue it in the reversed direction.
+                    if is_cur_edible {
+                        if let Cell::Board(board_id) = self[*push_seq.last().unwrap()] {
+                            let dir_rev = cur_dir.reversed();
+                            if let InnerSibling::NonWall(eater_gpos) =
+                                self.inner_sibling(board_id, dir_rev)
+                            {
+                                push_seq.push(last_gpos);
+                                cur_gpos = eater_gpos;
+                                cur_dir = dir_rev;
+                                continue 'try_push;
+                            }
                         }
                     }
                 },
             }
-            cur_gpos = self.sibling(cur_gpos, dir).ok_or(())?;
+            cur_gpos = self.sibling(cur_gpos, cur_dir).ok_or(())?;
         }
     }
+
+    fn inner_sibling(&self, board_id: BoardId, push_dir: Direction) -> InnerSibling {
+        let board = &self[board_id];
+        let pos = board.inner_sibling_pos(push_dir);
+        match board[pos] {
+            Cell::Wall => InnerSibling::Wall,
+            Cell::Empty | Cell::Box => InnerSibling::NonWall(GlobalPos { board_id, pos }),
+            Cell::Board(_) => todo!("Epsilon"),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+enum InnerSibling {
+    Wall,
+    NonWall(GlobalPos),
 }
 
 enum Action {
