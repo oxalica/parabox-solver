@@ -29,29 +29,38 @@ fn bfs_big_step(game: Game, mut on_step: impl FnMut()) -> Option<Vec<State>> {
             return None;
         }
 
-        let init_state = state_parent.get_index(big_cursor).unwrap().0.clone();
+        let get_init_state = |state_parent: &IndexMap<State, _>| {
+            state_parent.get_index(big_cursor).unwrap().0.clone()
+        };
+
+        let mut state = get_init_state(&state_parent);
         trivial_visited.clear();
-        trivial_visited.insert(init_state.player);
+        trivial_visited.insert(state.player);
         let mut small_cursor = 0;
         while small_cursor < trivial_visited.len() {
             let gpos = trivial_visited[small_cursor];
 
             for dir in Direction::ALL {
-                let mut state = init_state.clone();
-                state.set_player(gpos);
                 on_step();
+
+                state.set_player(gpos);
 
                 let Ok(do_pushed) = state.go(dir) else { continue };
 
+                // Success.
                 if state.is_success_on(&game.config) {
                     break 'bfs state;
                 }
 
-                if do_pushed {
-                    state_parent.entry(state).or_insert(big_cursor);
-                } else {
+                // Trivial move.
+                if !do_pushed {
                     trivial_visited.insert(state.player);
+                    continue;
                 }
+
+                // Non-trivial push. The state now cannot be reused.
+                state_parent.entry(state).or_insert(big_cursor);
+                state = get_init_state(&state_parent);
             }
             small_cursor += 1;
         }
