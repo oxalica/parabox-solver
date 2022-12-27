@@ -10,6 +10,7 @@ pub mod solve;
 
 pub const MAX_BOARD_CNT: usize = 16;
 pub const MAX_BOARD_WIDTH: usize = 16;
+pub const MAX_BOARD_SIZE: usize = MAX_BOARD_WIDTH.pow(2);
 
 // Is this really the upper limit?
 const MAX_PUSH_SEQ_LEN: usize = MAX_BOARD_CNT + 1;
@@ -107,6 +108,10 @@ impl Board {
         const _: [(); 1] = [(); std::mem::size_of::<Cell>()];
         unsafe { std::slice::from_raw_parts(self.grid.as_ptr().cast::<u8>(), self.grid.len()) }
     }
+
+    fn grid_index(&self, pos: Vec2) -> usize {
+        pos.0 as usize * self.width as usize + pos.1 as usize
+    }
 }
 
 impl PartialEq for Board {
@@ -129,13 +134,13 @@ impl Hash for Board {
 impl Index<Vec2> for Board {
     type Output = Cell;
     fn index(&self, pos: Vec2) -> &Self::Output {
-        let idx = pos.0 as usize * self.width as usize + pos.1 as usize;
+        let idx = self.grid_index(pos);
         &self.grid[idx]
     }
 }
 impl IndexMut<Vec2> for Board {
     fn index_mut(&mut self, pos: Vec2) -> &mut Self::Output {
-        let idx = pos.0 as usize * self.width as usize + pos.1 as usize;
+        let idx = self.grid_index(pos);
         &mut self.grid[idx]
     }
 }
@@ -172,13 +177,13 @@ impl Board {
     }
 }
 
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct GlobalPos {
     pub board_id: BoardId,
     pub pos: Vec2,
 }
 
-#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
 pub struct Vec2(pub u8, pub u8);
 
 impl From<GlobalPos> for usize {
@@ -188,14 +193,14 @@ impl From<GlobalPos> for usize {
                 && (gpos.pos.0 as usize) < MAX_BOARD_WIDTH
                 && (gpos.pos.1 as usize) < MAX_BOARD_WIDTH
         );
-        ((gpos.board_id as usize) * MAX_BOARD_WIDTH.pow(2))
+        ((gpos.board_id as usize) * MAX_BOARD_SIZE)
             | ((gpos.pos.0 as usize) * MAX_BOARD_WIDTH)
             | (gpos.pos.1 as usize)
     }
 }
 
 impl GlobalPos {
-    pub const TO_USIZE_LIMIT: usize = MAX_BOARD_CNT * MAX_BOARD_WIDTH.pow(2);
+    pub const TO_USIZE_LIMIT: usize = MAX_BOARD_CNT * MAX_BOARD_SIZE;
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -271,6 +276,33 @@ impl State {
                 .box_targets
                 .iter()
                 .all(|&gpos| self[gpos].is_box_like())
+    }
+
+    // TODO: Use bitset operations?
+    pub fn trivially_reachable_locations(&self) -> impl Iterator<Item = GlobalPos> + '_ {
+        let player = self.player;
+        let board = &self[player.board_id];
+        let mut queue = ArrayVec::<Vec2, MAX_BOARD_SIZE>::new();
+        let mut visited = [false; MAX_BOARD_SIZE];
+        let mut cursor = 0usize;
+        queue.push(player.pos);
+        visited[board.grid_index(player.pos)] = true;
+        while cursor < queue.len() {
+            let pos = queue[cursor];
+            for dir in Direction::ALL {
+                let Some(new_pos) = board.sibling_pos(pos, dir) else { continue };
+                if board[new_pos] == Cell::Empty
+                    && !mem::replace(&mut visited[board.grid_index(new_pos)], true)
+                {
+                    queue.push(new_pos);
+                }
+            }
+            cursor += 1;
+        }
+        queue.into_iter().map(move |pos| GlobalPos {
+            board_id: player.board_id,
+            pos,
+        })
     }
 
     fn get_board_box_pos(&self, target_board: BoardId) -> Option<GlobalPos> {

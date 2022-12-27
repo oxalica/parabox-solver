@@ -17,7 +17,8 @@ pub fn bfs(game: Game, on_step: impl FnMut()) -> Option<Vec<Direction>> {
 
 fn bfs_big_step(game: Game, mut on_step: impl FnMut()) -> Option<Vec<State>> {
     let mut state_parent = IndexMap::default();
-    state_parent.insert(game.state, !0usize); // Sentinel.
+    let init_loc = game.state.player;
+    state_parent.insert(game.state, (!0usize, init_loc)); // Sentinel.
 
     // Non-pushing states reachable from the current state.
     let mut trivial_visited = BucketIndexSet::<GlobalPos, { GlobalPos::TO_USIZE_LIMIT }>::new();
@@ -64,8 +65,17 @@ fn bfs_big_step(game: Game, mut on_step: impl FnMut()) -> Option<Vec<State>> {
                     continue;
                 }
 
-                // Non-trivial push. The state now cannot be reused.
-                state_parent.entry(state).or_insert(big_cursor);
+                // Non-trivial push.
+                // Here we canonicalize the player location to dedup, while saving the original
+                // one for step reconstruction.
+                let precanonical_loc = state.player;
+                let canonical_loc = state.trivially_reachable_locations().min().unwrap();
+                state.set_player(canonical_loc);
+                state_parent
+                    .entry(state)
+                    .or_insert((big_cursor, precanonical_loc));
+
+                // The state now cannot be reused.
                 state = get_init_state(&state_parent);
             }
             small_cursor += 1;
@@ -73,10 +83,15 @@ fn bfs_big_step(game: Game, mut on_step: impl FnMut()) -> Option<Vec<State>> {
         big_cursor += 1;
     };
 
-    let mut states = std::iter::successors(Some((&final_state, &big_cursor)), |(_, &i)| {
-        state_parent.get_index(i)
+    let mut states = std::iter::successors(
+        Some((&final_state, &(big_cursor, final_state.player))),
+        |(_, &(i, _))| state_parent.get_index(i),
+    )
+    .map(|(state, (_, precanonical_loc))| {
+        let mut state = state.clone();
+        state.set_player(*precanonical_loc);
+        state
     })
-    .map(|(state, _)| state.clone())
     .collect::<Vec<_>>();
     states.reverse();
     Some(states)
