@@ -1,8 +1,10 @@
 use std::str::FromStr;
 
-use anyhow::{bail, ensure, Context, Result};
+use anyhow::{anyhow, bail, ensure, Context, Result};
 
-use crate::{Board, BoardId, Cell, Config, Game, GlobalPos, State, Vec2};
+use crate::{
+    Board, BoardId, Cell, Config, Game, GlobalPos, State, Vec2, MAX_BOARD_CNT, MAX_BOARD_WIDTH,
+};
 
 impl FromStr for Game {
     type Err = anyhow::Error;
@@ -14,15 +16,17 @@ impl FromStr for Game {
         let mut player = None;
         let mut player_target = None;
         let mut box_targets = Vec::new();
-        let mut max_board_id = BoardId(0);
+        let mut max_board_id = BoardId::default();
 
         while let Some(id_line) = lines.next() {
-            let board_id = id_line.parse::<u8>()?;
+            let board_id = id_line
+                .parse::<usize>()?
+                .try_into()
+                .map_err(|()| anyhow!("Too many boards"))?;
             ensure!(
                 board_id as usize == boards.len(),
                 "Invalid board id: {board_id}"
             );
-            let board_id = BoardId(board_id);
 
             let line = lines.next().context("Missing board content")?;
             let width = line.chars().count();
@@ -53,7 +57,7 @@ impl FromStr for Game {
                             Cell::Empty
                         }
                         '0'..='9' => {
-                            let board_id = BoardId(ch as u8 - b'0');
+                            let board_id = BoardId::try_from(ch as usize - b'0' as usize).unwrap();
                             max_board_id = max_board_id.max(board_id);
                             Cell::Board(board_id)
                         }
@@ -70,11 +74,16 @@ impl FromStr for Game {
                 ensure!(
                     line.chars().count() == width,
                     "Width mismatch of board {}, line {height}, expecting width {width}",
-                    board_id.0,
+                    board_id,
                 );
                 parse_line(height, line)?;
                 height += 1;
             }
+
+            ensure!(
+                width < MAX_BOARD_WIDTH && height < MAX_BOARD_WIDTH,
+                "Board too big",
+            );
 
             boards.push(Board {
                 height: height as _,
@@ -84,11 +93,13 @@ impl FromStr for Game {
         }
 
         ensure!(
-            (max_board_id.0 as usize) < boards.len(),
+            (max_board_id as usize) < boards.len(),
             "Board id {} out of bound {}",
-            max_board_id.0,
+            max_board_id,
             boards.len(),
         );
+
+        ensure!(boards.len() < MAX_BOARD_CNT, "Too many boards");
 
         let config = Config {
             player_target: player_target.context("Missing player target")?,

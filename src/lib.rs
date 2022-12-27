@@ -5,6 +5,9 @@ mod fmt;
 mod parse;
 pub mod solve;
 
+pub const MAX_BOARD_CNT: usize = 16;
+pub const MAX_BOARD_WIDTH: usize = 16;
+
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -27,8 +30,38 @@ impl std::fmt::Display for Error {
 
 impl std::error::Error for Error {}
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct BoardId(pub u8);
+// Defined as enum to allow layout optimization of parent types.
+#[derive(Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[repr(u8)]
+#[rustfmt::skip]
+pub enum BoardId {
+    #[default]
+    _0, _1, _2, _3, _4, _5, _6, _7,
+    _8, _9, _A, _B, _C, _D, _E, _F,
+}
+
+impl TryFrom<usize> for BoardId {
+    type Error = ();
+    fn try_from(x: usize) -> Result<Self, Self::Error> {
+        if x < 16 {
+            unsafe { Ok(std::mem::transmute::<u8, BoardId>(x as u8)) }
+        } else {
+            Err(())
+        }
+    }
+}
+
+impl std::fmt::Debug for BoardId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        (*self as usize).fmt(f)
+    }
+}
+
+impl std::fmt::Display for BoardId {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        (*self as usize).fmt(f)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Game {
@@ -125,6 +158,9 @@ pub enum Cell {
     Board(BoardId),
 }
 
+/// Assert the layout optimization is applied.
+const _: [(); 1] = [(); std::mem::size_of::<Cell>()];
+
 impl Cell {
     pub fn is_box_like(&self) -> bool {
         matches!(self, Self::Box | Self::Board(_))
@@ -161,12 +197,12 @@ enum InnerSibling {
 impl Index<BoardId> for State {
     type Output = Board;
     fn index(&self, idx: BoardId) -> &Self::Output {
-        &self.boards[idx.0 as usize]
+        &self.boards[idx as usize]
     }
 }
 impl IndexMut<BoardId> for State {
     fn index_mut(&mut self, idx: BoardId) -> &mut Self::Output {
-        &mut self.boards[idx.0 as usize]
+        &mut self.boards[idx as usize]
     }
 }
 
@@ -192,12 +228,12 @@ impl State {
     }
 
     fn get_board_box_pos(&self, target_board: BoardId) -> Option<GlobalPos> {
-        self.boards.iter().zip(0..).find_map(|(board, id)| {
+        self.boards.iter().enumerate().find_map(|(id, board)| {
             let (pos, _) = board
                 .cells()
                 .find(|(_, cell)| *cell == Cell::Board(target_board))?;
             Some(GlobalPos {
-                board_id: BoardId(id),
+                board_id: id.try_into().unwrap(),
                 pos,
             })
         })

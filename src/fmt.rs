@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::{BoardId, Cell, Game, GlobalPos, State};
+use crate::{Cell, Game, GlobalPos, State};
 
 impl fmt::Display for Game {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -11,14 +11,14 @@ impl fmt::Display for Game {
 
 impl fmt::Display for State {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        for (board, id) in self.boards.iter().zip(0..) {
+        for (id, board) in self.boards.iter().enumerate() {
             id.fmt(f)?;
             for (pos, cell) in board.cells() {
                 if pos.1 == 0 {
                     "\n".fmt(f)?;
                 }
                 let gpos = GlobalPos {
-                    board_id: BoardId(id),
+                    board_id: id.try_into().unwrap(),
                     pos,
                 };
                 if gpos == self.player {
@@ -39,7 +39,7 @@ impl fmt::Display for Cell {
             Cell::Empty => ".".fmt(f),
             Cell::Wall => "#".fmt(f),
             Cell::Box => "b".fmt(f),
-            Cell::Board(BoardId(id)) => id.fmt(f),
+            Cell::Board(id) => id.fmt(f),
         }
     }
 }
