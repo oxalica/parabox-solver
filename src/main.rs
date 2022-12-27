@@ -1,3 +1,5 @@
+use std::time::Instant;
+
 use anyhow::{Context, Result};
 use console::{Key, Term};
 use indicatif::{ProgressBar, ProgressStyle};
@@ -37,9 +39,25 @@ fn main() -> Result<()> {
         .context("Failed to parse the map")?;
 
     if std::env::args().nth(2).as_deref() == Some("--solve") {
-        let pb = ProgressBar::new_spinner()
-            .with_style(ProgressStyle::with_template("{spinner} {pos} {per_sec}").unwrap());
-        let ret = solve::bfs(game, || pb.inc(1));
+        let style = ProgressStyle::with_template(
+            "{spinner} Elapsed: {elapsed_precise} Searched: {human_pos} Speed: {per_sec}",
+        )
+        .unwrap();
+        let pb = ProgressBar::new_spinner().with_style(style);
+
+        const BULK: u64 = 1 << 16;
+        let mut counter = 0u64;
+        let inst = Instant::now();
+        let ret = solve::bfs(game, || {
+            counter += 1;
+            if counter % BULK == 0 {
+                pb.set_position(counter);
+            }
+        });
+        let elapsed = inst.elapsed();
+        pb.set_position(counter);
+        pb.finish();
+        eprintln!("Finished in {:?}", elapsed);
         eprintln!("{:?}", ret);
         return Ok(());
     }
