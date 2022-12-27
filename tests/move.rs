@@ -7,7 +7,7 @@ use parabox_solver::{Direction, State};
 mod common;
 
 fn main() {
-    run_tests("move", |content| {
+    run_tests("move", true, |content| {
         let input = content
             .split_once(SEPARATOR)
             .map_or(content, |(input, _)| input)

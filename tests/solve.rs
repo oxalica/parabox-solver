@@ -6,7 +6,7 @@ use crate::common::*;
 mod common;
 
 fn main() {
-    run_tests("solve", |content| {
+    run_tests("solve", false, |content| {
         let map = content
             .split_once(SEPARATOR)
             .map_or(content, |(input, _)| input)

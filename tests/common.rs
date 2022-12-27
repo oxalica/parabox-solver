@@ -28,7 +28,11 @@ pub fn fmt_direction(dir: Direction) -> &'static str {
     }
 }
 
-pub fn run_tests(subdir: &str, mut f: impl FnMut(&str) -> Result<String>) {
+pub fn run_tests(
+    subdir: &str,
+    enabled_by_default: bool,
+    mut f: impl FnMut(&str) -> Result<String>,
+) {
     let mut tests = std::fs::read_dir(Path::new(TEST_DIR).join(subdir))
         .unwrap()
         .filter_map(|ent| {
@@ -43,9 +47,29 @@ pub fn run_tests(subdir: &str, mut f: impl FnMut(&str) -> Result<String>) {
     tests.sort();
 
     let do_update_tests = std::env::var("UPDATE_EXPECT").map_or(false, |v| v == "1");
+    let mut filters = Vec::new();
+    let mut is_enabled = enabled_by_default || !cfg!(debug_assertions);
+    for arg in std::env::args().skip(1) {
+        if !arg.starts_with('-') {
+            filters.push(arg);
+        } else if arg == "--ignored" || arg == "--include-ignored" {
+            is_enabled = true;
+        } else {
+            panic!("Unknow argument: {arg:?}");
+        }
+    }
+
+    if !is_enabled {
+        eprintln!("Skipped since the optimization is off");
+        return;
+    }
 
     let mut failed_cnt = 0;
     for (name, path) in &tests {
+        if !filters.iter().all(|filter| name.contains(filter)) {
+            continue;
+        }
+
         eprint!("{name}: ");
         let content = std::fs::read_to_string(path).unwrap();
         match f(&content) {
