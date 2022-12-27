@@ -25,6 +25,9 @@ fn bfs_big_step(game: Game, mut on_step: impl FnMut()) -> Option<Vec<State>> {
 
     let mut big_cursor = 0;
     let final_state = 'bfs: loop {
+        #[cfg(feature = "coz")]
+        coz::scope!("Big step");
+
         if big_cursor >= state_parent.len() {
             return None;
         }
@@ -42,6 +45,9 @@ fn bfs_big_step(game: Game, mut on_step: impl FnMut()) -> Option<Vec<State>> {
 
             for dir in Direction::ALL {
                 on_step();
+
+                #[cfg(feature = "coz")]
+                coz::progress!("Step");
 
                 state.set_player(gpos);
 
