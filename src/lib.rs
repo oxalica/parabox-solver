@@ -1,18 +1,31 @@
 use std::mem;
 use std::ops::{Index, IndexMut};
 
-use anyhow::Result;
-
 mod fmt;
 mod parse;
 pub mod solve;
 
+pub type Result<T, E = Error> = std::result::Result<T, E>;
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum GoError {
+pub enum Error {
     Stuck,
     Unmovable,
     OutOfInfinity,
 }
+
+impl std::fmt::Display for Error {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Error::Stuck => "TODO: Stuck",
+            Error::Unmovable => "Unmovable direction",
+            Error::OutOfInfinity => "TODO: Out of infinity",
+        }
+        .fmt(f)
+    }
+}
+
+impl std::error::Error for Error {}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct BoardId(pub u8);
@@ -192,7 +205,7 @@ impl State {
         }
     }
 
-    pub fn go(&mut self, dir: Direction) -> Result<(), GoError> {
+    pub fn go(&mut self, dir: Direction) -> Result<()> {
         let start_gpos = self.player;
         let mut cur_gpos = start_gpos;
         let mut cur_dir = dir;
@@ -202,7 +215,7 @@ impl State {
             cnt += 1;
             // FIXME
             if cnt > 1000 {
-                return Err(GoError::Stuck);
+                return Err(Error::Stuck);
             }
 
             match self[cur_gpos] {
@@ -222,7 +235,7 @@ impl State {
                 Cell::Wall => loop {
                     // Push aganst the wall.
                     if push_seq.len() <= 1 {
-                        return Err(GoError::Unmovable);
+                        return Err(Error::Unmovable);
                     }
 
                     let last_gpos = push_seq.pop().unwrap();
@@ -263,7 +276,7 @@ impl State {
             }
             cur_gpos = self
                 .sibling(cur_gpos, cur_dir)
-                .ok_or(GoError::OutOfInfinity)?;
+                .ok_or(Error::OutOfInfinity)?;
         }
     }
 

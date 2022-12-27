@@ -3,6 +3,11 @@ name = "parabox-solver"
 version = "0.1.0"
 edition = "2021"
 
+[[test]]
+name = "move"
+path = "tests/move.rs"
+harness = false
+
 [dependencies]
 anyhow = "1.0.68"
 console = "0.15.2"
