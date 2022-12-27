@@ -1,33 +1,30 @@
-use std::collections::hash_map::Entry;
-use std::collections::HashMap;
-
 use crate::{Direction, State};
+
+type IndexMap<K, V> = indexmap::IndexMap<K, V, fxhash::FxBuildHasher>;
 
 #[derive(Clone)]
 struct Node {
-    state: State,
-    steps: u32,
     parent: usize,
-    dir: Direction,
+    prev_direction: Direction,
 }
 
 pub fn bfs(init_state: State, mut on_step: impl FnMut(usize)) -> Option<Vec<Direction>> {
-    let mut visited = HashMap::new();
-    let mut queue = vec![Node {
-        state: init_state,
-        steps: 0,
+    let mut visited = IndexMap::default();
+    visited.insert(
+        init_state,
         // Unused.
-        parent: 0,
-        // Unused.
-        dir: Direction::Right,
-    }];
+        Node {
+            parent: 0,
+            prev_direction: Direction::Right,
+        },
+    );
 
     let mut cur = 0;
     let mut success_dir = None;
-    'bfs: while cur != queue.len() {
-        on_step(queue.len());
+    'bfs: while cur != visited.len() {
+        on_step(visited.len());
         for dir in Direction::ALL {
-            let mut state = queue[cur].state.clone();
+            let mut state = visited.get_index(cur).unwrap().0.clone();
             if state.go(dir).is_err() {
                 continue;
             }
@@ -35,22 +32,18 @@ pub fn bfs(init_state: State, mut on_step: impl FnMut(usize)) -> Option<Vec<Dire
                 success_dir = Some(dir);
                 break 'bfs;
             }
-            let Entry::Vacant(ent) = visited.entry(state) else { continue };
-            queue.push(Node {
-                state: ent.key().clone(),
-                steps: queue[cur].steps + 1,
+            visited.entry(state).or_insert(Node {
                 parent: cur,
-                dir,
+                prev_direction: dir,
             });
-            ent.insert(queue.len() - 1);
         }
         cur += 1;
     }
 
     let success_dir = success_dir?;
-    let mut ret = std::iter::successors(Some(cur), |&i| Some(queue[i].parent))
+    let mut ret = std::iter::successors(Some(cur), |&i| Some(visited[i].parent))
         .take_while(|&i| i != 0)
-        .map(|i| queue[i].dir)
+        .map(|i| visited[i].prev_direction)
         .collect::<Vec<_>>();
     ret.reverse();
     ret.push(success_dir);
