@@ -2,12 +2,17 @@ use std::hash::{Hash, Hasher};
 use std::mem;
 use std::ops::{Index, IndexMut};
 
+use arrayvec::ArrayVec;
+
 mod fmt;
 mod parse;
 pub mod solve;
 
 pub const MAX_BOARD_CNT: usize = 16;
 pub const MAX_BOARD_WIDTH: usize = 16;
+
+// Is this really the upper limit?
+const MAX_PUSH_SEQ_LEN: usize = MAX_BOARD_CNT + 1;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -281,7 +286,7 @@ impl State {
     }
 
     fn sibling(&self, mut gpos: GlobalPos, dir: Direction) -> Option<GlobalPos> {
-        let mut visited = Vec::new();
+        let mut visited = ArrayVec::<_, MAX_PUSH_SEQ_LEN>::new();
         loop {
             if let Some(pos) = self[gpos.board_id].sibling_pos(gpos.pos, dir) {
                 return Some(GlobalPos {
@@ -314,7 +319,7 @@ impl State {
         let start_gpos = self.player;
         let mut cur_gpos = start_gpos;
         let mut cur_dir = dir;
-        let mut push_seq = Vec::new();
+        let mut push_seq = ArrayVec::<_, MAX_PUSH_SEQ_LEN>::new();
         let mut cnt = 0;
         'try_push: loop {
             cnt += 1;

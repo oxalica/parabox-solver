@@ -16,13 +16,16 @@ harness = false
 
 [dependencies]
 anyhow = "1.0.68"
+arrayvec = "0.7.2"
 console = "0.15.2"
 fxhash = "0.2.1"
 indexmap = "1.9.2"
 indicatif = "0.17.2"
 rayon = "1.6.1"
 
-coz = { version = "0.1.3", optional = true }
+[dependencies.coz]
+version = "0.1.3"
+optional = true
 
 [profile.release]
 # debug = 1 # For benching.
