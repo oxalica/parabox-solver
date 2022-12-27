@@ -96,7 +96,8 @@ impl FromStr for Game {
         };
         let state = State {
             player: player.context("Missing player")?,
-            boards: boards.into(),
+            // Workaround: https://github.com/bluss/arrayvec/pull/202
+            boards: (&boards[..]).try_into().context("Too many boards")?,
         };
         Ok(Game { config, state })
     }

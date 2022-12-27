@@ -1,9 +1,13 @@
 use std::mem;
 use std::ops::{Index, IndexMut};
 
+use arrayvec::ArrayVec;
+
 mod fmt;
 mod parse;
 pub mod solve;
+
+pub const MAX_BOARD_CNT: usize = 8;
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
@@ -51,7 +55,7 @@ pub struct Config {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct State {
     pub(crate) player: GlobalPos,
-    boards: Box<[Board]>,
+    boards: ArrayVec<Board, MAX_BOARD_CNT>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
