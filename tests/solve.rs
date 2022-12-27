@@ -1,5 +1,5 @@
 use anyhow::Context;
-use parabox_solver::{solve, State};
+use parabox_solver::{solve, Game};
 
 use crate::common::*;
 
@@ -11,9 +11,9 @@ fn main() {
             .split_once(SEPARATOR)
             .map_or(content, |(input, _)| input)
             .trim();
-        let state = map.parse::<State>().context("Invalid map")?;
+        let game = map.parse::<Game>().context("Invalid map")?;
 
-        let steps = solve::bfs(state, |_| {})
+        let steps = solve::bfs(game, |_| {})
             .context("No solution")?
             .into_iter()
             .map(fmt_direction)

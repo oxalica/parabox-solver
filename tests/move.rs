@@ -2,7 +2,7 @@ use std::fmt::Write;
 
 use anyhow::{bail, ensure, Context};
 use common::*;
-use parabox_solver::{Direction, State};
+use parabox_solver::{Direction, Game};
 
 mod common;
 
@@ -15,7 +15,7 @@ fn main() {
         let (actions, map) = input.split_once('\n').context("No actions")?;
         ensure!(!actions.is_empty(), "No actions");
 
-        let mut state = map.parse::<State>().context("Invalid map")?;
+        let mut game = map.parse::<Game>().context("Invalid map")?;
         let mut got = format!("{input}\n\n{SEPARATOR}");
         for (ch, i) in actions.chars().zip(1..) {
             (|| {
@@ -26,10 +26,10 @@ fn main() {
                     'D' => Direction::Down,
                     _ => bail!("Invalid action: {ch:?}"),
                 };
-                state.go(dir).context("Move failed")
+                game.state.go(dir).context("Move failed")
             })()
             .with_context(|| format!("Failed to perform step {i} {ch}"))?;
-            write!(got, "{state}{SEPARATOR}").unwrap();
+            write!(got, "{game}{SEPARATOR}").unwrap();
         }
 
         Ok(got)

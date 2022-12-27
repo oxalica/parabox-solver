@@ -1,4 +1,4 @@
-use crate::{Direction, State};
+use crate::{Direction, Game};
 
 type IndexMap<K, V> = indexmap::IndexMap<K, V, fxhash::FxBuildHasher>;
 
@@ -8,10 +8,10 @@ struct Node {
     prev_direction: Direction,
 }
 
-pub fn bfs(init_state: State, mut on_step: impl FnMut(usize)) -> Option<Vec<Direction>> {
+pub fn bfs(game: Game, mut on_step: impl FnMut(usize)) -> Option<Vec<Direction>> {
     let mut visited = IndexMap::default();
     visited.insert(
-        init_state,
+        game.state,
         // Unused.
         Node {
             parent: 0,
@@ -28,7 +28,7 @@ pub fn bfs(init_state: State, mut on_step: impl FnMut(usize)) -> Option<Vec<Dire
             if state.go(dir).is_err() {
                 continue;
             }
-            if state.is_success() {
+            if state.is_success_on(&game.config) {
                 success_dir = Some(dir);
                 break 'bfs;
             }

@@ -2,9 +2,9 @@ use std::str::FromStr;
 
 use anyhow::{bail, ensure, Context, Result};
 
-use crate::{Board, BoardId, Cell, GlobalPos, State, Vec2};
+use crate::{Board, BoardId, Cell, Config, Game, GlobalPos, State, Vec2};
 
-impl FromStr for State {
+impl FromStr for Game {
     type Err = anyhow::Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
@@ -90,11 +90,14 @@ impl FromStr for State {
             boards.len(),
         );
 
-        Ok(State {
-            player: player.context("Missing player")?,
+        let config = Config {
             player_target: player_target.context("Missing player target")?,
             box_targets: box_targets.into(),
+        };
+        let state = State {
+            player: player.context("Missing player")?,
             boards: boards.into(),
-        })
+        };
+        Ok(Game { config, state })
     }
 }

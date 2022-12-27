@@ -1,7 +1,7 @@
 use anyhow::{Context, Result};
 use console::{Key, Term};
 use indicatif::{ProgressBar, ProgressStyle};
-use parabox_solver::{solve, Direction, State};
+use parabox_solver::{solve, Direction, Game};
 
 enum Action {
     Exit,
@@ -32,28 +32,28 @@ fn main() -> Result<()> {
         .nth(1)
         .context("Missing map file argument")?;
     let map_data = std::fs::read_to_string(path).context("Failed to read the map")?;
-    let init_state = map_data
-        .parse::<State>()
+    let game = map_data
+        .parse::<Game>()
         .context("Failed to parse the map")?;
 
     if std::env::args().nth(2).as_deref() == Some("--solve") {
         let pb = ProgressBar::new_spinner()
             .with_style(ProgressStyle::with_template("{spinner} {pos} {per_sec}").unwrap());
-        let ret = solve::bfs(init_state, |len| {
+        let ret = solve::bfs(game, |len| {
             pb.set_position(len as _);
         });
         eprintln!("{:?}", ret);
         return Ok(());
     }
 
-    let mut state = init_state.clone();
-    let mut history = Vec::new();
+    let mut history = vec![game.state];
 
     let term = Term::stderr();
     loop {
-        eprintln!("{state}");
+        let mut state = history.last().cloned().unwrap();
+        eprintln!("{}", state);
 
-        if state.is_success() {
+        if state.is_success_on(&game.config) {
             eprintln!("Success");
             break;
         }
@@ -67,20 +67,17 @@ fn main() -> Result<()> {
         match action {
             Action::Exit => break,
             Action::Go(dir) => {
-                let mut new_state = state.clone();
-                if new_state.go(dir).is_ok() {
+                if state.go(dir).is_ok() {
                     history.push(state);
-                    state = new_state;
                 }
             }
             Action::Undo => {
-                if let Some(last_state) = history.pop() {
-                    state = last_state;
+                if history.len() >= 2 {
+                    history.pop();
                 }
             }
             Action::Reset => {
-                history.push(state);
-                state = init_state.clone();
+                history.push(history[0].clone());
             }
         }
     }

@@ -1,6 +1,13 @@
 use std::fmt;
 
-use crate::{BoardId, Cell, GlobalPos, State};
+use crate::{BoardId, Cell, Game, GlobalPos, State};
+
+impl fmt::Display for Game {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // FIXME
+        self.state.fmt(f)
+    }
+}
 
 impl fmt::Display for State {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {

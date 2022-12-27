@@ -31,10 +31,26 @@ impl std::error::Error for Error {}
 pub struct BoardId(pub u8);
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct State {
-    player: GlobalPos,
+pub struct Game {
+    pub config: Config,
+    pub state: State,
+}
+
+impl Game {
+    pub fn is_success(&self) -> bool {
+        self.state.is_success_on(&self.config)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Config {
     player_target: GlobalPos,
     box_targets: Box<[GlobalPos]>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct State {
+    player: GlobalPos,
     boards: Box<[Board]>,
 }
 
@@ -167,9 +183,9 @@ impl IndexMut<GlobalPos> for State {
 }
 
 impl State {
-    pub fn is_success(&self) -> bool {
-        self.player_target == self.player
-            && self
+    pub fn is_success_on(&self, config: &Config) -> bool {
+        config.player_target == self.player
+            && config
                 .box_targets
                 .iter()
                 .all(|&gpos| self[gpos].is_box_like())
