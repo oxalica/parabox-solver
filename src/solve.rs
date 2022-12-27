@@ -1,4 +1,4 @@
-use crate::{Direction, Game, GlobalPos, State};
+use crate::{Config, Direction, Game, GlobalPos, State};
 
 type IndexMap<K, V> = indexmap::IndexMap<K, V, fxhash::FxBuildHasher>;
 
@@ -66,16 +66,19 @@ fn bfs_big_step(game: Game, mut on_step: impl FnMut()) -> Option<Vec<State>> {
                 }
 
                 // Non-trivial push.
-                // Here we canonicalize the player location to dedup, while saving the original
-                // one for step reconstruction.
-                let precanonical_loc = state.player;
-                let canonical_loc = state.trivially_reachable_locations().min().unwrap();
-                state.set_player(canonical_loc);
-                state_parent
-                    .entry(state)
-                    .or_insert((big_cursor, precanonical_loc));
+                // Quick check if this state deserves a search.
+                if validate_state(&state, &game.config) {
+                    // Canonicalize the player location to dedup, while saving the original
+                    // one for step reconstruction.
+                    let precanonical_loc = state.player;
+                    let canonical_loc = state.trivially_reachable_locations().min().unwrap();
+                    state.set_player(canonical_loc);
+                    state_parent
+                        .entry(state)
+                        .or_insert((big_cursor, precanonical_loc));
+                }
 
-                // The state now cannot be reused.
+                // The state cannot be reused after a successful push.
                 state = get_init_state(&state_parent);
             }
             small_cursor += 1;
@@ -131,6 +134,23 @@ fn bfs_small_step(
     .collect::<Vec<_>>();
     steps.reverse();
     Some(steps)
+}
+
+/// Check if the current state is possible to win.
+fn validate_state(state: &State, config: &Config) -> bool {
+    let mut target_reachable = vec![false; config.box_targets.len()];
+    // Traverse all box-like objects.
+    for box_gpos in state.cells().filter(|&gpos| state[gpos].is_box_like()) {
+        for reachable_gpos in state.box_appox_reachable_locations(box_gpos) {
+            // If the box can reach some targets, mark the targets reachable.
+            for (target_idx, &target_gpos) in config.box_targets.iter().enumerate() {
+                if target_gpos == reachable_gpos {
+                    target_reachable[target_idx] = true;
+                }
+            }
+        }
+    }
+    target_reachable.iter().all(|&b| b)
 }
 
 struct BucketIndexSet<T, const N: usize> {

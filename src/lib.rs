@@ -278,6 +278,15 @@ impl State {
                 .all(|&gpos| self[gpos].is_box_like())
     }
 
+    pub fn cells(&self) -> impl Iterator<Item = GlobalPos> + '_ {
+        self.boards.iter().enumerate().flat_map(|(id, board)| {
+            board.cells().map(move |(pos, _)| GlobalPos {
+                board_id: id.try_into().unwrap(),
+                pos,
+            })
+        })
+    }
+
     // TODO: Use bitset operations?
     pub fn trivially_reachable_locations(&self) -> impl Iterator<Item = GlobalPos> + '_ {
         let player = self.player;
@@ -303,6 +312,35 @@ impl State {
             board_id: player.board_id,
             pos,
         })
+    }
+
+    pub fn box_appox_reachable_locations(
+        &self,
+        box_gpos: GlobalPos,
+    ) -> impl Iterator<Item = GlobalPos> + '_ {
+        let mut queue = ArrayVec::<_, { GlobalPos::TO_USIZE_LIMIT }>::new();
+        let mut visited = [false; GlobalPos::TO_USIZE_LIMIT];
+        let mut cursor = 0usize;
+        queue.push(box_gpos);
+        visited[usize::from(box_gpos)] = true;
+        while cursor < queue.len() {
+            let gpos = queue[cursor];
+            for dir in Direction::ALL {
+                let board = &self[gpos.board_id];
+                // Cannot push from a wall.
+                if let Some(rev_pos) = board.sibling_pos(gpos.pos, dir.reversed()) {
+                    if board[rev_pos] == Cell::Wall {
+                        continue;
+                    }
+                }
+                let Some(new_pos) = self.sibling(gpos, dir) else { continue };
+                if !mem::replace(&mut visited[usize::from(new_pos)], true) {
+                    queue.push(new_pos);
+                }
+            }
+            cursor += 1;
+        }
+        queue.into_iter()
     }
 
     fn get_board_box_pos(&self, target_board: BoardId) -> Option<GlobalPos> {
