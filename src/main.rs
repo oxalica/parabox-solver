@@ -39,9 +39,7 @@ fn main() -> Result<()> {
     if std::env::args().nth(2).as_deref() == Some("--solve") {
         let pb = ProgressBar::new_spinner()
             .with_style(ProgressStyle::with_template("{spinner} {pos} {per_sec}").unwrap());
-        let ret = solve::bfs(game, |len| {
-            pb.set_position(len as _);
-        });
+        let ret = solve::bfs(game, || pb.inc(1));
         eprintln!("{:?}", ret);
         return Ok(());
     }
@@ -67,9 +65,14 @@ fn main() -> Result<()> {
         match action {
             Action::Exit => break,
             Action::Go(dir) => {
-                if state.go(dir).is_ok() {
-                    history.push(state);
-                }
+                let msg = match state.go(dir) {
+                    Ok(pushed) => {
+                        history.push(state);
+                        pushed.to_string()
+                    }
+                    Err(err) => err.to_string(),
+                };
+                eprintln!("{msg}");
             }
             Action::Undo => {
                 if history.len() >= 2 {

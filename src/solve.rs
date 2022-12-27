@@ -1,51 +1,104 @@
-use crate::{Direction, Game};
+use crate::{Direction, Game, State};
 
 type IndexMap<K, V> = indexmap::IndexMap<K, V, fxhash::FxBuildHasher>;
+type IndexSet<K> = indexmap::IndexSet<K, fxhash::FxBuildHasher>;
 
-#[derive(Clone)]
-struct Node {
-    parent: usize,
-    prev_direction: Direction,
+pub fn bfs(game: Game, on_step: impl FnMut()) -> Option<Vec<Direction>> {
+    let states = bfs_big_step(game, on_step)?;
+
+    // Resolve intermediate steps.
+    let mut solution = Vec::new();
+    let mut state_parent = IndexMap::default();
+    for w in states.windows(2) {
+        let substeps = bfs_small_step(&w[0], &w[1], &mut state_parent).expect("Must be reachable");
+        solution.extend(substeps);
+    }
+    Some(solution)
 }
 
-pub fn bfs(game: Game, mut on_step: impl FnMut(usize)) -> Option<Vec<Direction>> {
-    let mut visited = IndexMap::default();
-    visited.insert(
-        game.state,
-        // Unused.
-        Node {
-            parent: 0,
-            prev_direction: Direction::Right,
-        },
-    );
+fn bfs_big_step(game: Game, mut on_step: impl FnMut()) -> Option<Vec<State>> {
+    let mut state_parent = IndexMap::default();
+    state_parent.insert(game.state, !0usize); // Sentinel.
 
-    let mut cur = 0;
-    let mut success_dir = None;
-    'bfs: while cur != visited.len() {
-        on_step(visited.len());
-        for dir in Direction::ALL {
-            let mut state = visited.get_index(cur).unwrap().0.clone();
-            if state.go(dir).is_err() {
-                continue;
-            }
-            if state.is_success_on(&game.config) {
-                success_dir = Some(dir);
-                break 'bfs;
-            }
-            visited.entry(state).or_insert(Node {
-                parent: cur,
-                prev_direction: dir,
-            });
+    // Non-pushing states reachable from the current state.
+    let mut trivial_visited = IndexSet::default();
+
+    let mut big_cursor = 0;
+    let final_state = 'bfs: loop {
+        if big_cursor >= state_parent.len() {
+            return None;
         }
-        cur += 1;
-    }
 
-    let success_dir = success_dir?;
-    let mut ret = std::iter::successors(Some(cur), |&i| Some(visited[i].parent))
-        .take_while(|&i| i != 0)
-        .map(|i| visited[i].prev_direction)
-        .collect::<Vec<_>>();
-    ret.reverse();
-    ret.push(success_dir);
-    Some(ret)
+        let init_state = state_parent.get_index(big_cursor).unwrap().0.clone();
+        trivial_visited.clear();
+        trivial_visited.insert(init_state.player);
+        let mut small_cursor = 0;
+        while small_cursor < trivial_visited.len() {
+            let gpos = trivial_visited[small_cursor];
+
+            for dir in Direction::ALL {
+                let mut state = init_state.clone();
+                state.set_player(gpos);
+                on_step();
+
+                let Ok(do_pushed) = state.go(dir) else { continue };
+
+                if state.is_success_on(&game.config) {
+                    break 'bfs state;
+                }
+
+                if do_pushed {
+                    state_parent.entry(state).or_insert(big_cursor);
+                } else {
+                    trivial_visited.insert(state.player);
+                }
+            }
+            small_cursor += 1;
+        }
+        big_cursor += 1;
+    };
+
+    let mut states = std::iter::successors(Some((&final_state, &big_cursor)), |(_, &i)| {
+        state_parent.get_index(i)
+    })
+    .map(|(state, _)| state.clone())
+    .collect::<Vec<_>>();
+    states.reverse();
+    Some(states)
+}
+
+fn bfs_small_step(
+    before: &State,
+    after: &State,
+    state_parent: &mut IndexMap<State, (usize, Direction)>,
+) -> Option<Vec<Direction>> {
+    state_parent.insert(before.clone(), (!0usize, Direction::Right)); // Sentinel.
+    let mut cursor = 0;
+    let final_dir = 'bfs: loop {
+        if cursor >= state_parent.len() {
+            return None;
+        }
+
+        for dir in Direction::ALL {
+            let mut state = state_parent.get_index(cursor).unwrap().0.clone();
+            let Ok(do_pushed) = state.go(dir) else { continue };
+            // NB. The last state transition may not push anything.
+            if state == *after {
+                break 'bfs dir;
+            }
+            if !do_pushed {
+                state_parent.entry(state).or_insert((cursor, dir));
+            }
+        }
+        cursor += 1;
+    };
+
+    let mut steps = std::iter::successors(Some((cursor, final_dir)), |&(i, _)| {
+        let (parent, dir) = state_parent[i];
+        (parent != !0usize).then_some((parent, dir))
+    })
+    .map(|(_, dir)| dir)
+    .collect::<Vec<_>>();
+    steps.reverse();
+    Some(steps)
 }

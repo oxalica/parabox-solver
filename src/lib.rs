@@ -50,7 +50,7 @@ pub struct Config {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct State {
-    player: GlobalPos,
+    pub(crate) player: GlobalPos,
     boards: Box<[Board]>,
 }
 
@@ -108,16 +108,16 @@ impl Board {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-struct GlobalPos {
-    board_id: BoardId,
-    pos: Vec2,
+pub struct GlobalPos {
+    pub board_id: BoardId,
+    pub pos: Vec2,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-struct Vec2(u8, u8);
+pub struct Vec2(pub u8, pub u8);
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
-enum Cell {
+pub enum Cell {
     #[default]
     Empty,
     Wall,
@@ -221,7 +221,19 @@ impl State {
         }
     }
 
-    pub fn go(&mut self, dir: Direction) -> Result<()> {
+    /// Set the player location.
+    /// The target location must be either empty, or the current location.
+    pub fn set_player(&mut self, new_gpos: GlobalPos) {
+        let prev_gpos = self.player;
+        let cell = mem::take(&mut self[prev_gpos]);
+        let replaced = mem::replace(&mut self[new_gpos], cell);
+        assert_eq!(replaced, Cell::Empty);
+        self.player = new_gpos;
+    }
+
+    /// Move the player towards a specific direction,
+    /// returns if it moves something other than itself.
+    pub fn go(&mut self, dir: Direction) -> Result<bool> {
         let start_gpos = self.player;
         let mut cur_gpos = start_gpos;
         let mut cur_dir = dir;
@@ -245,7 +257,7 @@ impl State {
                         cell = mem::replace(&mut self[gpos], cell);
                     }
                     self.player = push_seq[1];
-                    return Ok(());
+                    return Ok(push_seq.len() > 2);
                 }
                 // Back pressure for entering.
                 Cell::Wall => loop {
