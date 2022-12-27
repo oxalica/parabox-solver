@@ -1,3 +1,4 @@
+use std::hash::{Hash, Hasher};
 use std::mem;
 use std::ops::{Index, IndexMut};
 
@@ -87,11 +88,37 @@ pub struct State {
     boards: Box<[Board]>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone)]
 pub struct Board {
     height: u8,
     width: u8,
     grid: Box<[Cell]>,
+}
+
+impl Board {
+    /// Get the raw grid bytes for fast comparison and hashing.
+    fn as_raw_grid(&self) -> &[u8] {
+        // Assert the layout optimization is applied, thus it's a POD without padding.
+        const _: [(); 1] = [(); std::mem::size_of::<Cell>()];
+        unsafe { std::slice::from_raw_parts(self.grid.as_ptr().cast::<u8>(), self.grid.len()) }
+    }
+}
+
+impl PartialEq for Board {
+    fn eq(&self, other: &Self) -> bool {
+        // NB. Only width*height is compared.
+        self.as_raw_grid() == other.as_raw_grid()
+    }
+}
+
+impl Eq for Board {}
+
+impl Hash for Board {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        // NB. We only hashing states from the same game, thus the board size is always the same.
+        // The length is not necessary counted here. This should not cause more collisions.
+        state.write(self.as_raw_grid());
+    }
 }
 
 impl Index<Vec2> for Board {
@@ -157,9 +184,6 @@ pub enum Cell {
     Box,
     Board(BoardId),
 }
-
-/// Assert the layout optimization is applied.
-const _: [(); 1] = [(); std::mem::size_of::<Cell>()];
 
 impl Cell {
     pub fn is_box_like(&self) -> bool {
