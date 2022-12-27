@@ -1,7 +1,6 @@
-use crate::{Direction, Game, State};
+use crate::{Direction, Game, GlobalPos, State};
 
 type IndexMap<K, V> = indexmap::IndexMap<K, V, fxhash::FxBuildHasher>;
-type IndexSet<K> = indexmap::IndexSet<K, fxhash::FxBuildHasher>;
 
 pub fn bfs(game: Game, on_step: impl FnMut()) -> Option<Vec<Direction>> {
     let states = bfs_big_step(game, on_step)?;
@@ -21,7 +20,7 @@ fn bfs_big_step(game: Game, mut on_step: impl FnMut()) -> Option<Vec<State>> {
     state_parent.insert(game.state, !0usize); // Sentinel.
 
     // Non-pushing states reachable from the current state.
-    let mut trivial_visited = IndexSet::default();
+    let mut trivial_visited = BucketIndexSet::<GlobalPos, { GlobalPos::TO_USIZE_LIMIT }>::new();
 
     let mut big_cursor = 0;
     let final_state = 'bfs: loop {
@@ -38,7 +37,8 @@ fn bfs_big_step(game: Game, mut on_step: impl FnMut()) -> Option<Vec<State>> {
 
         let mut state = get_init_state(&state_parent);
         trivial_visited.clear();
-        trivial_visited.insert(state.player);
+        trivial_visited.try_insert(state.player);
+
         let mut small_cursor = 0;
         while small_cursor < trivial_visited.len() {
             let gpos = trivial_visited[small_cursor];
@@ -60,7 +60,7 @@ fn bfs_big_step(game: Game, mut on_step: impl FnMut()) -> Option<Vec<State>> {
 
                 // Trivial move.
                 if !do_pushed {
-                    trivial_visited.insert(state.player);
+                    trivial_visited.try_insert(state.player);
                     continue;
                 }
 
@@ -116,4 +116,53 @@ fn bfs_small_step(
     .collect::<Vec<_>>();
     steps.reverse();
     Some(steps)
+}
+
+struct BucketIndexSet<T, const N: usize> {
+    len: usize,
+    elems: [T; N],
+    set: [u8; N],
+    /// The current "true" value, for fast clearing.
+    set_marker: u8,
+}
+
+impl<T, const N: usize> BucketIndexSet<T, N>
+where
+    T: Default + Copy + Into<usize>,
+{
+    fn new() -> Self {
+        Self {
+            len: 0,
+            elems: [T::default(); N],
+            set: [0; N],
+            set_marker: 1,
+        }
+    }
+
+    fn len(&self) -> usize {
+        self.len
+    }
+
+    fn clear(&mut self) {
+        self.len = 0;
+        self.set_marker = self.set_marker.wrapping_add(1);
+    }
+
+    fn try_insert(&mut self, value: T) {
+        let i = value.into();
+        if self.set[i] == self.set_marker {
+            return;
+        }
+        self.set[i] = self.set_marker;
+        self.elems[self.len] = value;
+        self.len += 1;
+    }
+}
+
+impl<T, const N: usize> std::ops::Index<usize> for BucketIndexSet<T, N> {
+    type Output = T;
+    fn index(&self, i: usize) -> &Self::Output {
+        assert!(i < self.len);
+        &self.elems[i]
+    }
 }

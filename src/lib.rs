@@ -167,14 +167,31 @@ impl Board {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct GlobalPos {
     pub board_id: BoardId,
     pub pos: Vec2,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct Vec2(pub u8, pub u8);
+
+impl From<GlobalPos> for usize {
+    fn from(gpos: GlobalPos) -> Self {
+        debug_assert!(
+            (gpos.board_id as usize) < MAX_BOARD_CNT
+                && (gpos.pos.0 as usize) < MAX_BOARD_WIDTH
+                && (gpos.pos.1 as usize) < MAX_BOARD_WIDTH
+        );
+        ((gpos.board_id as usize) * MAX_BOARD_WIDTH.pow(2))
+            | ((gpos.pos.0 as usize) * MAX_BOARD_WIDTH)
+            | (gpos.pos.1 as usize)
+    }
+}
+
+impl GlobalPos {
+    pub const TO_USIZE_LIMIT: usize = MAX_BOARD_CNT * MAX_BOARD_WIDTH.pow(2);
+}
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Cell {
